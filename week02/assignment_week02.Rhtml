@@ -1,0 +1,93 @@
+<html>
+
+<head>
+<title>Title</title>
+</head>
+
+<body>
+
+<p>This is an R HTML document. When you click the <b>Knit HTML</b> button a web page will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:</p>
+
+<!--begin.rcode
+summary(cars)
+end.rcode-->
+
+```{r}
+suppressPackageStartupMessages({
+  library(AnnotationHub)
+  library(ensembldb)
+  library(GenomicRanges)
+  library(epiwraps)
+})
+ah <- AnnotationHub()
+#1
+#1.1
+# to query the AH programmatically:
+ql1 <- query(ah, c("GRCm38", "Mus Musculus",'ensembl 102'))
+ql1
+# to browse the AnnotationHub interactively:
+display(ah)
+## method 1 : search AH89211 in the data table
+## method 2
+ensdb1 <- ah[["AH89211"]]
+ensdb1
+#1.2
+ql2 <- query(ah, c("GRCm38", "dna_sm","Mus Musculus"))
+ql2
+ensdb2 <- ah[["AH88477"]]
+ensdb2
+#1.3
+ql3 <- query(ah, c("BDGP6", "dna_sm"))
+ql3
+ensdb3 <- ah[["AH90691"]]
+ensdb3
+
+#2
+#2.1
+txs <- genes(ensdb1)
+txs
+seqlevels(txs)
+## gene_id
+head(txs$gene_id)
+head(txs[,"gene_id"])
+table(seqnames(txs))
+a=table(txs$gene_id)
+length(a)
+## gene symbols
+head(txs$symbol)
+head(txs[,"symbol"])
+table(seqnames(txs))
+b=table(txs$symbol)
+length(b)
+#2.2
+txs <- transcripts(ensdb1)
+txs
+seqlevels(txs)
+head(txs$tx_biotype)
+head(txs[,"tx_biotype"])
+table(seqnames(txs))
+table(txs$tx_biotype)
+# supportedFilters(), tx_biotype
+exs <- exons(ensdb1, column=c("tx_id"))
+exs
+# same as "exons()" but returning the exons split by transcripts
+exsPerTx <- exonsBy(ensdb1, column=c("tx_id","tx_biotype"))
+# we limit ourselves to protein-coding transcripts:
+exsPerTx <- exonsBy(ensdb1, column=c("tx_id","tx_biotype"), 
+                    filter=TxBiotypeFilter("protein_coding"))
+exsPerTx
+
+nbExonsPerPCtx <- lengths(exsPerTx)
+hist(nbExonsPerPCtx)
+
+
+
+
+<p>You can also embed plots, for example:</p>
+
+<!--begin.rcode fig.width=7, fig.height=6
+plot(cars)
+end.rcode-->
+
+</body>
+</html>
