@@ -1,0 +1,109 @@
+---
+title: "Untitled"
+author: "Lu Zimeng"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+suppressPackageStartupMessages({
+  library(AnnotationHub)
+  library(rtracklayer)
+  library(epiwraps)
+  library(GenomicRanges)
+})
+ah <- AnnotationHub()
+```
+
+
+```{R}
+download.file("https://www.encodeproject.org/files/ENCFF653YVR/@@download/ENCFF653YVR.bed.gz", dest="p300.bed.gz")
+p300_peaks <- rtracklayer::import("p300.bed.gz", format="narrowPeak")
+head(p300_peaks)
+```
+
+
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF698ERY/@@download/ENCFF698ERY.bed.gz", dest="H3K4me3.bed.gz")
+H3K4me3_peaks<- rtracklayer::import("H3K4me3.bed.gz", format="narrowPeak")
+head(H3K4me3_peaks)
+
+download.file("https://www.encodeproject.org/files/ENCFF630SRQ/@@download/ENCFF630SRQ.bed.gz", dest="H3K4me1.bed.gz")
+H3K4me1_peaks<- rtracklayer::import("H3K4me1.bed.gz", format="narrowPeak")
+head(H3K4me1_peaks)
+
+download.file("https://www.encodeproject.org/files/ENCFF519QMV/@@download/ENCFF519QMV.bed.gz", dest="H3K27ac.bed.gz")
+H3K27ac_peaks<- rtracklayer::import("H3K27ac.bed.gz", format="narrowPeak")
+head(H3K27ac_peaks)
+
+download.file("https://www.encodeproject.org/files/ENCFF311SVU/@@download/ENCFF311SVU.bed.gz", dest="H3K27me3.bed.gz")
+H3K27me3_peaks<- rtracklayer::import("H3K27me3.bed.gz", format="narrowPeak")
+head(H3K27me3_peaks)
+```
+## Of the p300 peaks, what proportion overlap each of the marks?
+# H3K4me3  0.17
+```{r}
+proms1 <- promoters(H3K4me3_peaks, upstream=1000, downstream=500)
+peaksOverlapsPromoters1 <- overlapsAny(p300_peaks, proms1)
+table(peaksOverlapsPromoters1)
+sum1=sum(peaksOverlapsPromoters1)
+A=20459+sum1
+A
+a1=sum1/A
+a1
+```
+# H3K4me1 0.34
+```{r}
+proms2 <- promoters(H3K4me1_peaks, upstream=1000, downstream=500)
+peaksOverlapsPromoters2 <- overlapsAny(p300_peaks, proms2)
+table(peaksOverlapsPromoters2)
+sum2=sum(peaksOverlapsPromoters2)
+a2=sum2/A
+a2
+```
+# H3K27ac  0.45
+```{r}
+proms3 <- promoters(H3K27ac_peaks, upstream=1000, downstream=500)
+peaksOverlapsPromoters3 <- overlapsAny(p300_peaks, proms3)
+table(peaksOverlapsPromoters3)
+sum3=sum(peaksOverlapsPromoters3)
+a3=sum3/A
+a3
+```
+# H3K27me3  0.22
+```{r}
+proms4 <- promoters(H3K27me3_peaks, upstream=1000, downstream=500)
+peaksOverlapsPromoters4 <- overlapsAny(p300_peaks, proms4)
+table(peaksOverlapsPromoters4)
+sum4=sum(peaksOverlapsPromoters4)
+a4=sum4/A
+a4
+```
+
+
+
+
+
+
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
