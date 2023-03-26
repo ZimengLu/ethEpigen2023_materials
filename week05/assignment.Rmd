@@ -1,0 +1,89 @@
+---
+title: "assignment05"
+author: "Lu Zimeng"
+date: "`r Sys.Date()`"
+output: html_document
+---
+### 1
+```{r}
+suppressPackageStartupMessages({
+  library(AnnotationHub)
+  library(ensembldb)
+  library(GenomicRanges)
+  library(epiwraps)
+  library(rtracklayer)
+  library(ggplot2)
+})
+ah <- AnnotationHub(localHub=TRUE)
+```
+
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF698ERY/@@download/ENCFF698ERY.bed.gz", dest="H3K4me3.bed.gz")
+H3K4me3_peaks<- rtracklayer::import("H3K4me3.bed.gz", format="narrowPeak")
+download.file("https://www.encodeproject.org/files/ENCFF311SVU/@@download/ENCFF311SVU.bed.gz", dest="H3K27me3.bed.gz")
+H3K27me3_peaks<- rtracklayer::import("H3K27me3.bed.gz", format="narrowPeak")
+```
+
+
+```{r}
+bivalent_do <- H3K4me3_peaks[overlapsAny(H3K4me3_peaks, H3K27me3_peaks)]
+# Number of bivalent regions
+length_bivalent <- length(bivalent_do)
+length_bivalent
+bivalent_df <- as.data.frame(bivalent_do)
+head(bivalent_df)
+```
+
+### 2
+# Download the H3K27me3 and H3K4me3 peaks from smooth muscle cells
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF817CHW/@@download/ENCFF817CHW.bed.gz", dest="H3K27me3.bed.gz")
+H3K27me3_peaks_sm<- rtracklayer::import("H3K27me3.bed.gz", format="narrowPeak")
+head(H3K27me3_peaks_sm)
+
+download.file("https://www.encodeproject.org/files/ENCFF714BRC/@@download/ENCFF714BRC.bed.gz", dest="H3K4me3.bed.gz")
+H3K4me3_peaks_sm<- rtracklayer::import("H3K4me3.bed.gz", format="narrowPeak")
+head(H3K4me3_peaks_sm)
+```
+# use the "overlapsAny" function
+```{r}
+bivalent_sm <- H3K4me3_peaks_sm[overlapsAny(H3K4me3_peaks_sm, H3K27me3_peaks_sm)]
+```
+
+```{r}
+# overlapping peaks with bivalent domains for H3K27me3
+overlap_H3k27me3 <- findOverlaps(bivalent_sm, H3K27me3_peaks_sm)
+H3k27me3_overlap_domains <- unique(subjectHits(overlap_H3k27me3))
+a=length(H3k27me3_overlap_domains)
+a
+# overlapping peaks with bivalent domains for H3K4me3
+overlap_H3k4me3 <- findOverlaps(bivalent_sm, H3K4me3_peaks_sm)
+H3k4me3_overlap_domains <- unique(subjectHits(overlap_H3k4me3))
+b=length(H3k4me3_overlap_domains)
+b
+# overlapping peaks with bivalent domains for both H3K27me3 and H3K4me3
+overlap_both <- intersect(H3k27me3_overlap_domains, H3k4me3_overlap_domains)
+c=length(overlap_both)
+c
+#How many of the mESC bivalent domains overlap either mark or their combination
+a+b-c
+n_overlap <- length(unique(c(H3k27me3_overlap_domains, H3k4me3_overlap_domains, overlap_both)))
+n_overlap
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
