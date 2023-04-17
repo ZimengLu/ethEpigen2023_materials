@@ -1,0 +1,88 @@
+---
+title: "Untitled"
+author: "Lu Zimeng"
+date: '`r Sys.Date()`'
+output: html_document
+---
+
+
+```{r}
+BiocManager::install(c("motifmatchr", "MotifDb", "universalmotif", "TFBSTools", "PWMEnrich"))
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(AnnotationHub)
+  library(GenomicRanges)
+  library(ggplot2)
+  library(motifmatchr)
+  library(Biostrings) # for handling sequences
+  library(MotifDb) # database of motifs
+  library(TFBSTools) # for handling some motif formats
+  library(universalmotif) # for converting motifs to various formats
+  library(PWMEnrich) # for R-based motif enrichment analysis
+})
+```
+
+
+# Obtaining peak sequences
+```{R}
+download.file("https://www.encodeproject.org/files/ENCFF368VWJ/@@download/ENCFF368VWJ.bed.gz", "mESC_REST_ENCFF368VWJ.bed.gz")
+peaks <- rtracklayer::import("mESC_REST_ENCFF368VWJ.bed.gz", format="NarrowPeak")
+seqlevelsStyle(peaks) <- "Ensembl" 
+peaks_chr1 <- peaks[seqnames(peaks)=="1"]
+```
+
+
+```{r}
+peak_centers <- resize(peaks_chr1, fix="center", width=100)
+# we get the genome sequence:
+ah <- AnnotationHub(localHub=TRUE)
+genome <- ah[["AH68356"]]
+# we get the sequences corresponding to the peak centers:
+peak_seqs <- Biostrings::getSeq(genome, peak_centers)
+peak_seqs
+```
+# Motif scanning
+## Getting the desired motif
+```{r}
+# we search for "REST" in the motif database
+motifs <- query(MotifDb, "REST")
+# Identify the instances of the factor's motif
+names(motifs)
+motif <- motifs[["Mmusculus-HOCOMOCOv10-REST_MOUSE.H10MO.A"]]
+```
+## Scanning a set of sequences
+```{r}
+Biostrings::writeXStringSet(rtracklayer::import(genome), "genome.fa")
+```
+
+```{r}
+motif2 <- convert_motifs(motif, class="TFBSTools-PFMatrix")
+moi2 <- motifmatchr::matchMotifs(motif2, subject=peak_centers, genome=Rsamtools::FaFile("genome.fa"), out="positions")[[1]]
+head(moi2)
+```
+
+```{r}
+# peaks with motif:
+peaks_w_motif <- peaks[overlapsAny(peaks,moi2)]
+length(peaks_w_motif)
+length(peaks)
+## Of all the peaks, what proportion contains a motif for the factor?
+length(peaks_w_motif)/length(peaks)
+cat(paste0("Of the ", length(peaks), " peaks, ", length(peaks_w_motif), " (", round(length(peaks_w_motif)/length(peaks)*100, 2), "%) contain a motif."))
+```
+# Motif enrichment analysis
+```{r}
+# prepare multithreading:
+registerCoresPWMEnrich(1)
+# launch the analysis:
+res <- motifEnrichment(peak_seqs, convert_motifs(motif, "PWMEnrich-PWM"))
+# motif with peak
+length(res)
+# Of all instances of that motif in the genome, what proportion is bound by the factor (i.e. has a peak)?
+length(res)/length(motif)
+cat(paste0("Of the ", length(motif), " motif instances, ", length(res), " (", round(length(res)/length(motif)*100, 2), "%) overlap a peak."))
+```
+
+
