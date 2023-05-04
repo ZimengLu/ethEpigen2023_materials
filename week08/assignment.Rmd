@@ -1,0 +1,177 @@
+---
+title: "assignment"
+author: "Lu Zimeng"
+date: '`r Sys.Date()`'
+output: html_document
+---
+```{r}
+BiocManager::install("sechm")
+BiocManager::install("chromVAR")
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(epiwraps)
+  library(motifmatchr)
+  library(MotifDb)
+  library(universalmotif)
+  library(sechm)
+  library(BiocParallel)
+  library(ggplot2)
+  library(chromVAR) # for motif accessibility estimation
+  library(SummarizedExperiment) # data structure
+  library(limma) # for statistical analysis
+})
+ register(SerialParam())
+```
+
+## Get the database of motifs
+
+```{r, eval=FALSE}
+options(timeout=6000)
+download.file("https://ethz-ins.org/content/dex.chr1.zip", "dex.chr1.zip", mode="wb")
+unzip("dex.chr1.zip")
+```
+
+```{r}
+motifs <- query(MotifDb, c("HOCOMOCOv10", "Mmusculus"))
+motifs <- do.call(TFBSTools::PWMatrixList, setNames(
+           universalmotif::convert_motifs(motifs, class="TFBSTools-PWMatrix"),
+           mcols(motifs)$providerName))
+```
+
+
+# comparing stressed (denoted ‘FSS’ – forced swim stress) and control animals
+
+``````{r}
+download.file("https://ethz-ins.org/content/mouse_mm38_hippocampus.peakCounts.SE.rds","mouse_mm38_hippocampus.peakCounts.SE.rds" )
+se1 = readRDS("mouse_mm38_hippocampus.peakCounts.SE.rds")
+BiocManager::install("BSgenome.Mmusculus.UCSC.mm10")
+genome <- BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10
+seqlevelsStyle(se1) = "UCSC"
+```
+
+```{r}
+colData(se1)$condition <- c("CONTROL","CONTROL","CONTROL","CONTROL","CONTROL","CONTROL","FSS","FSS","FSS","FSS","FSS","FSS")
+se1$condition <- c("CONTROL","CONTROL","CONTROL","CONTROL","CONTROL","CONTROL","FSS","FSS","FSS","FSS","FSS","FSS")
+colData(se1)
+rowRanges(se1)
+```
+
+```{r}
+se1 <- suppressWarnings(chromVAR::addGCBias(se1, genome=genome))
+moi1 <- suppressWarnings(motifmatchr::matchMotifs(motifs, subject=se1, genome=genome))
+```
+
+```{r}
+# we find which peaks contain which motifs
+dev1 <- chromVAR::computeDeviations(object = se1, annotations=moi1,
+                                   background_peaks=getBackgroundPeaks(se1, niterations=1000))
+dev1
+colData(dev1)
+```
+
+```{r}
+head(assays(dev1)$z)
+assays(dev1)$norm <- scale(assays(dev1)$z)
+dev1
+variability1 <- computeVariability(dev1)
+plotVariability(variability1)
+```
+# Differential analysis
+
+```{r}
+dev1$condition
+# if needed, we can specify the baseline condition, by default it's the first in alphabetical order
+dev1$condition <- factor(dev1$condition)
+dev1$condition <- relevel(dev1$condition, "CONTROL")
+mm1 <- model.matrix(~dev1$condition)
+# equivalent:
+mm1 <- model.matrix(~condition, data=as.data.frame(colData(dev1)))
+mm1
+```
+```{r}
+fit1 <- eBayes(lmFit(assays(dev1)$norm, mm1))
+res1 <- as.data.frame(topTable(fit1, coef="conditionFSS", number = Inf))
+head(res1)
+res1$TF <- row.names(res1)
+ggplot(res1, aes(logFC, -log10(adj.P.Val), label=TF)) + geom_text() 
+```
+## From plot and table, we can conclude that ANDR has the largest absolute deviation value(largest |logFC| and |t| value) with the largest significant(smallest P value), which means it is the top most significant motif
+
+# heatmap
+```{r}
+sechm(dev1, features = head(row.names(res1)), assayName="norm",top_annotation = c("condition", "depth"))
+```
+# we can identify clusters in ANDR Motif in FSS mice; compared with control animals, FSS mice gene peaks have more norm distribution of motifs
+
+
+
+
+
+# comparing male and female animals
+```{r}
+se2 = readRDS("mouse_mm38_hippocampus.peakCounts.SE.rds")
+BiocManager::install("BSgenome.Mmusculus.UCSC.mm10")
+seqlevelsStyle(se2) = "UCSC"
+```
+
+```{r}
+colData(se2)$condition <- c("FEMALE","FEMALE","FEMALE","MALE","MALE","MALE")
+se2$condition <- c("FEMALE","FEMALE","FEMALE","MALE","MALE","MALE")
+colData(se2)
+rowRanges(se2)
+```
+
+```{r}
+se2 <- suppressWarnings(chromVAR::addGCBias(se2, genome=genome))
+moi2 <- suppressWarnings(motifmatchr::matchMotifs(motifs, subject=se2, genome=genome))
+```
+
+```{r}
+# we find which peaks contain which motifs
+dev2 <- chromVAR::computeDeviations(object = se2, annotations=moi2,
+                                   background_peaks=getBackgroundPeaks(se2, niterations=1000))
+dev2
+colData(dev2)
+```
+
+```{r}
+head(assays(dev2)$z)
+assays(dev2)$norm <- scale(assays(dev2)$z)
+dev2
+variability2 <- computeVariability(dev2)
+plotVariability(variability2)
+```
+
+## ANDR is the top significant motifs
+
+# Differential analysis
+
+```{r}
+dev2$condition
+# if needed, we can specify the baseline condition, by default it's the first in alphabetical order
+dev2$condition <- factor(dev2$condition)
+dev2$condition <- relevel(dev2$condition, "FEMALE")
+mm2 <- model.matrix(~dev2$condition)
+# equivalent:
+mm2 <- model.matrix(~condition, data=as.data.frame(colData(dev2)))
+mm2
+```
+
+```{r}
+fit2 <- eBayes(lmFit(assays(dev2)$norm, mm2))
+res2 <- as.data.frame(topTable(fit2, coef="conditionMALE", number = Inf))
+head(res2)
+res2$TF <- row.names(res2)
+ggplot(res2, aes(logFC, -log10(adj.P.Val), label=TF)) + geom_text() 
+```
+## From plot and table, we can conclude that TYY1 has the largest absolute deviation value(largest |logFC| and |t| value) with the largest significant(smallest P value), which means it is the top most significant motif
+
+# heatmap
+```{r}
+sechm(dev2, features = head(row.names(res2)), assayName="norm",top_annotation = c("condition", "depth"))
+```
+# we can identify clusters in TYY and TEAD Motifs in female mice ; compared with male animals, female mice gene peaks have more norm distribution of motifs
+
+
