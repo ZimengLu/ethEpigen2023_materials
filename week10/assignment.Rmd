@@ -1,0 +1,122 @@
+---
+title: "assignment"
+author: "Lu Zimeng"
+date: "`r Sys.Date()`"
+output: html_document
+---
+```{r}
+BiocManager::install("ETHZ-INS/epiwraps")
+BiocManager::install("rGREAT")
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(GenomicRanges)
+  library(epiwraps)
+  library(ggplot2)
+  library(rGREAT)
+})
+```
+## Download the data
+
+```{r, eval=FALSE}
+options(timeout = 6000)
+download.file("https://ethz-ins.org/content/w10.assignment.zip", "w10.assignment.zip")
+unzip("w10.assignment.zip")
+list.files()
+```
+## Prepare the regions and the tracks
+
+```{r}
+tracks <- list.files(pattern="bw$")
+region1 <- rtracklayer::import.bed("Creb1.bed")
+region3 <- rtracklayer::import.bed("Creb3.bed")
+region3L1 <- rtracklayer::import.bed("Creb3L1.bed")
+```
+
+```{r}
+regions <- reduce(unlist(GRangesList(region1,region3,region3L1)))
+```
+
+## Plot
+
+```{r}
+ml <- signal2Matrix(tracks, regions, extend=2000)
+set.seed(123)  
+nf <- getNormFactors(tracks, useSeqLevels="chr1")
+ml2 <- rescaleSignalMatrices(ml, scaleFactors=nf)
+plotEnrichedHeatmaps(ml)
+```
+
+## Clustering
+
+```{r}
+set.seed(123)  # to ensure that it gives the same results everytime
+cl <- clusterSignalMatrices(ml, k=4)
+# the number of regions assigned to each cluster
+table(cl)
+# the first few values of the cluster assignment vector
+head(cl)
+# the total number of regions assigned to clusters
+length(cl)
+# the total number of genomic regions in the input data
+length(regions)
+# contains the cluster assignment for each genomic region
+regions$cluster <- cl
+```
+
+```{r}
+mycolors <- c("1"="red", "2"="blue", "3"="darkgreen", "4"="black")
+plotEnrichedHeatmaps(ml, row_split=cl, mean_color=mycolors)
+# clusters 1&2 are enriched in Creb3, Identifying that Creb3 binding sites are in clusters 1&2, and clusters 1&2 are potentially regulated by Creb3; Creb1 & Creb3L1 are specifically enriched in clusters 2&4, suggesting that they are co-regulated specific biological processes.
+```
+
+```{r}
+cl2 <- clusterSignalMatrices(ml, k=2:10)
+ggplot(cl2$varExplained, aes(k, varExplained)) + geom_line()
+# From the "elbow" of the curve, we can conclude that the optimal number of clusters to use in the analysis is 3or4or5
+```
+
+
+```{r}
+# Plotting just the averages:
+d <- meltSignals(ml, splitBy=cl)
+ggplot(d, aes(position, mean, colour=sample)) + geom_line(size=1.2) + facet_wrap(~split)
+#  Creb3 is important in defining the unique cellular state or differentiation trajectory represented by cluster 1. Creb3L1& Creb1 are the key transcriptional regulators in cluster 4.
+```
+
+# Clustering using relative signal instead:
+
+```{r}
+cl <- clusterSignalMatrices(ml, k=4, scaleRows = TRUE)
+d <- meltSignals(ml, splitBy=cl)
+ggplot(d, aes(position, mean, colour=sample)) + geom_line() + facet_wrap(~split)
+plotEnrichedHeatmaps(ml, row_split = cl, scale_rows = "global")
+#  co-regulated regulated regions (cluster 1) that are enriched for the binding of TF Creb1 & Creb3L1. Differentially regulated regions( cluster 2 & 3 & 4 )that are enriched for the binding of specific proteins ( Creb1 & 3 & 3L1 sperately).
+```
+## Enrichment analysis
+
+# Find what's enriched in one cluster with respect to the others:
+
+```{r}
+# we first split the regions by cluster:
+split_regions <- split(regions, cl)
+
+# we send the data to the GREAT server to run an enrichment analysis
+job <- submitGreatJob(gr=split_regions[["4"]], bg=regions, species="hg38")
+res <- getEnrichmentTables(job)
+names(res)
+```
+# We plot the top Biological Processes:
+
+```{r, fig.width=9, fig.height=6}
+bp <- res$`GO Biological Process`
+head(bp)
+
+ggplot(head(bp,15), aes(Hyper_Fold_Enrichment, reorder(name, Hyper_Adjp_BH), size=Hyper_Foreground_Region_Hits, color=-log10(Hyper_Adjp_BH))) + geom_point() + scale_color_viridis_c()
+```
+# mitochondrial tRNA processing/ modification & RNA processing have the largest the fold-enrichment of the Biological Process in the foreground set compared to the background set, but the numbers of foreground region hits for them are small. 
+# The top enriched Biological Processes is tRNA processing, as it has smallest P-value ( with yellow color and order in the bottom).
+
+
+
