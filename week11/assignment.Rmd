@@ -1,0 +1,190 @@
+---
+title: "assignment"
+author: "Lu Zimeng"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+chooseCRANmirror(ind = 1)  # Choose the first mirror
+BiocManager::install("DMRcate")
+BiocManager::install("ETHZ-INS/epiwraps")
+install.packages("pheatmap")
+```
+
+```{r}
+BiocManager::install("rGREAT")
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(GenomicRanges)
+  library(epiwraps)
+  library(ggplot2)
+  library(rGREAT)
+  library(AnnotationHub)
+  library(ensembldb)
+  library(bsseq)
+  library(BiocParallel)
+  library(edgeR)
+  library(DMRcate)
+  library(rtracklayer)
+  library(sechm)
+  library(pheatmap)
+  library(viridis)
+  library(data.table)
+})
+set.seed(40)
+```
+
+## Load the data
+
+```{r, download}
+options(timeout = 6000)
+download.file("https://ethz-ins.org/content/w11_practical.zip", "w11_practical.zip")
+unzip("w11_practical.zip")
+```
+
+```{r, load bigwigs}
+tracksGr <- list("ATAC"="~/53-bioinformatics/ATAC.rds",
+                 "CTCF"="~/53-bioinformatics/CTCF.rds",
+                 "H3K27ac"="~/53-bioinformatics/H3K27ac.rds",
+                 "H3K4me3"="~/53-bioinformatics/H3K4me3.rds",
+                 "DNAme"="~/53-bioinformatics/DNAm.rds")
+tracksGr <- lapply(tracksGr, readRDS)
+```
+
+## Load the Annotation data
+
+```{r, annotation}
+ah <- AnnotationHub()
+ensdb <- ah[["AH89211"]] # GRCm38
+```
+
+## Obtaining the promoter coordinates of chromosome 1:
+```{r, load promoters}
+chr1 <-  GRanges(seqnames=Rle(c("1")), 
+                          ranges = IRanges(1, end=195471971))
+
+# For simplicity we assume here that the region +/- 150 of a tss constitutes a promoters
+tssMargin <- 200
+promoterRegions <- promoters(ensdb, upstream=tssMargin, downstream=tssMargin,
+                             filter=GRangesFilter(chr1))
+```
+
+```{r, load gene bodies}
+# gene body coordinates: 
+geneBodies <- genes(ensdb, columns=c("gene_seq_start", "gene_seq_end"),
+                    filter=GRangesFilter(chr1))
+```
+## Enriched Heatmaps
+
+### Promoters
+```{r}
+seqlevelsStyle(promoterRegions) <- "UCSC"
+smTss <- signal2Matrix(tracksGr, promoterRegions[1:2000], 
+                       extend=1000, w=20, 
+                       type="scale", smooth=TRUE)
+
+plotEnrichedHeatmaps(smTss[c(1,3:5)], axis_name = c("start","end"), colors = c("white","red"))
+# An abscence of DNA methylation region for promoter
+# H3k4ME3 plays an important role for activating modification (has rich region)
+```
+
+### Clustering
+```{r}
+cl <- clusterSignalMatrices(smTss$DNAm, k=2)
+table(cl)
+
+mycolors <- c("1"="#E69F00", "2"="#56B4E9") # row_split=cl, mean_color=mycolors
+plotEnrichedHeatmaps(smTss[c(1,3:5)], 
+                     axis_name = c("start","end"), 
+                     row_split=cl,
+                     scale_title="signal",
+                     mean_color=mycolors,
+                     colors = c("white","red"))
+# cluster 1 has activating region, which include no DNA methylation region
+# cluster 2 are repressive modifications, which include DNA methylation
+
+```
+### TF-Bindings
+
+```{r}
+plotEnrichedHeatmaps(smTss, 
+                     axis_name = c("start","end"), 
+                     row_split=cl,
+                     scale_title="signal",
+                     mean_color=mycolors,
+                     colors = c("white","red"))
+
+```
+## Differential Methylation Testing
+
+### Bsseq object
+```{r, bsseq}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("bsseqData")
+```
+
+```{r}
+bs <- readRDS("~/53-bioinformatics/bs.rds")
+rowRanges(bs)
+pData(bs)
+```
+### Testing
+```{r}
+# genes
+ensdb <- ah[["AH109336"]]
+
+chr22 <-  GRanges(seqnames=Rle(c("22")), 
+                  ranges = IRanges(1, end=195471971))
+genesChr22 <- genes(ensdb, columns=c("gene_seq_start", "gene_seq_end", "gene_name"),
+                    filter=GRangesFilter(chr22))
+seqlevelsStyle(genesChr22) <- "UCSC"
+
+# promoters
+tssMargin <- 200
+promotersChr22 <- promoters(ensdb, upstream=tssMargin, downstream=tssMargin,
+                             filter=GRangesFilter(chr22), columns=c("gene_name"))
+seqlevelsStyle(promotersChr22) <- "UCSC"
+```
+```{r, look at bsseq objects}
+metPr <- bsseq::getMeth(bs, 
+                        regions=promotersChr22[1:100], 
+                        what="perRegion")
+colnames(metPr) <- colnames(bs)
+# retrieved for the regions specified in the "promotersChr22" object, limited to the first 100 regions
+rownames(metPr) <- promotersChr22$gene_name[1:100]
+# retrieve methylation percentages per region
+metPr <- metPr[!is.na(rowSums(metPr)),]
+
+library(viridis)
+library(pheatmap)
+annotationCol <- as.data.frame(pData(bs)[,c("Type","Pair")])
+# column names are set to match the column names 
+rownames(annotationCol) <- colnames(metPr)
+
+pheatmap::pheatmap(metPr, 
+                   cluster_rows=TRUE,
+                   cluster_cols=FALSE,
+                   annotation_col=annotationCol,
+                   show_rownames = TRUE,
+                   color=rocket(10))
+```
+
+# Given that N2 has high consistent methylation intensity, clusters of regions for pair2& normal type gene have a greater number of CpG sites within regions have a methyl group attached
+# Given that C3 has low methylation intensity, regions for pair3& cancer gene are for Dynamic or Developmental Regulation (Gene Activation or Active Regulatory)
+
+
+
+
+
+
+
+
+
+
+
+
