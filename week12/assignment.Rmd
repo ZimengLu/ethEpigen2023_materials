@@ -1,0 +1,97 @@
+---
+title: "assignment"
+author: "Lu Zimeng"
+date: "`r Sys.Date()`"
+output: html_document
+---
+```{r}
+BiocManager::install("InteractionSet")
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(GenomicRanges)
+  library(AnnotationHub)
+  library(ensembldb)
+  library(InteractionSet)
+  library(epiwraps)
+})
+```
+
+```{r}
+# p300 peaks in A549 cells:
+download.file("https://www.encodeproject.org/files/ENCFF776TFX/@@download/ENCFF776TFX.bed.gz", "p300.narrowPeak.gz")
+peaks <- rtracklayer::import("p300.narrowPeak.gz")
+seqlevelsStyle(peaks) = "ensembl"
+```
+
+```{r}
+download.file("https://ethz-ins.org/content/hg38.SalviatoDistalEnhancerTargets.GR.rds", "hg38.SalviatoDistalEnhancerTargets.GR.rds")
+gi = readRDS("hg38.SalviatoDistalEnhancerTargets.GR.rds")
+seqlevelsStyle(gi) = "ensembl"
+gi
+```
+
+
+```{r}
+ah <- AnnotationHub()
+ensdb <- ah[["AH95744"]] 
+```
+
+## Basic peak annotation
+```{r}
+annotatedPeaks <- epiwraps::annotateRegions(peaks, ensdb)
+head(annotatedPeaks)
+```
+
+```{r}
+# Extend the TSS regions between 2.5kb and 10kb
+proms1 <- promoters(gi, 2500, 10000)
+peaks$overlapsPromoter1 <- overlapsAny(peaks, proms1)
+peaksInPromoters1 <- peaks[peaks$overlapsPromoter1]
+peaksInPromoters1 
+```
+```{r}
+# Extend the TSS regions over 10kb
+proms2 <- promoters(gi, 10000)
+peaks$overlapsPromoter2 <- overlapsAny(peaks, proms2)
+peaksInPromoters2 <- peaks[peaks$overlapsPromoter2]
+peaksInPromoters2 
+```
+## Checking distal targets of peaks
+
+```{r}
+# find overlaps
+o1 <- findOverlaps(peaksInPromoters1, gi)
+head(o1)
+o2 <- findOverlaps(peaksInPromoters2, gi)
+head(o2)
+```
+
+```{r}
+mcols(peaksInPromoters1)[from(o1),"target"] <- gi[to(o1)]$target
+mcols(peaksInPromoters1)$target <- CharacterList(mcols(peaksInPromoters1)$target)
+length(peaksInPromoters1)/length(gi)
+
+```
+
+```{r}
+mcols(peaksInPromoters2)[from(o2),"target"] <- gi[to(o2)]$target
+mcols(peaksInPromoters2)$target <- CharacterList(mcols(peaksInPromoters2)$target)
+length(peaksInPromoters2)/length(gi)
+```
+## Of the genes that are between 2.5 and 10kb from the nearest TSS, 1.39 % form an interaction with that nearest gene. Of the genes that are more than 10kb away from the nearest TSS, 1.28 % form an interaction with that nearest gene.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
